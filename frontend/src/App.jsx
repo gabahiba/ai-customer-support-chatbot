@@ -133,12 +133,11 @@ export default function App() {
     const assistantMsg = {
       id: `assistant-${Date.now()}`,
       role: "assistant",
-      content: result.response,  // ✅ response وليس reply
+      content: result.response,
       created_at: new Date().toISOString(),
     };
     setMessages((prev) => [...prev, assistantMsg]);
 
-    // ✅ إذا كانت أول رسالة، حدّثي العنوان
     const isFirstExchange = messages.length === 0;
     if (isFirstExchange) {
       const shortTitle = text.slice(0, 40);
@@ -153,7 +152,7 @@ export default function App() {
       {
         id: `error-${Date.now()}`,
         role: "assistant",
-        content: "عذراً، حدث خطأ أثناء الاتصال بالخادم. الرجاء المحاولة مرة أخرى.",
+        content: "عذراً، حدث خطأ أثناء الاتصال بالخادم.",
         created_at: new Date().toISOString(),
       },
     ]);
