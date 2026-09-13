@@ -103,11 +103,16 @@ export default function App() {
   };
 
   const handleSendMessage = async (text) => {
-  // ✅ إذا لم توجد جلسة، أنشئ واحدة جديدة
+  if (!text.trim() || isSending) return;
+
+  // ✅ 1. توليد session_id (بطريقة احتياطية تعمل على جميع المتصفحات)
   let currentSessionId = activeSessionId;
   if (!currentSessionId) {
-    currentSessionId = crypto.randomUUID();
+    currentSessionId = 'session-' + Date.now() + '-' + Math.random().toString(36).substring(2, 11);
+    console.log('🆕 Generated session_id:', currentSessionId);
+    
     try {
+      // ✅ 2. إنشاء الجلسة على الخادم مع تمرير session_id
       await createSession(currentSessionId, text.slice(0, 40), browserId);
       setActiveSessionId(currentSessionId);
       await loadSessions();
@@ -117,6 +122,7 @@ export default function App() {
     }
   }
 
+  // ✅ 3. إضافة رسالة المستخدم مؤقتاً
   const tempUserMsg = {
     id: `temp-user-${Date.now()}`,
     role: "user",
@@ -127,7 +133,7 @@ export default function App() {
   setIsSending(true);
 
   try {
-    // ✅ الترتيب الصحيح: (sessionId, message, browserId)
+    // ✅ 4. إرسال الرسالة إلى /chat/
     const result = await sendMessage(currentSessionId, text, browserId);
     
     const assistantMsg = {
@@ -138,10 +144,10 @@ export default function App() {
     };
     setMessages((prev) => [...prev, assistantMsg]);
 
+    // ✅ 5. تحديث العنوان إذا كانت أول رسالة
     const isFirstExchange = messages.length === 0;
     if (isFirstExchange) {
-      const shortTitle = text.slice(0, 40);
-      await handleRenameSession(currentSessionId, shortTitle);
+      await handleRenameSession(currentSessionId, text.slice(0, 40));
     } else {
       await loadSessions();
     }
@@ -152,7 +158,7 @@ export default function App() {
       {
         id: `error-${Date.now()}`,
         role: "assistant",
-        content: "عذراً، حدث خطأ أثناء الاتصال بالخادم.",
+        content: "عذراً، حدث خطأ أثناء الاتصال بالخادم. الرجاء المحاولة مرة أخرى.",
         created_at: new Date().toISOString(),
       },
     ]);

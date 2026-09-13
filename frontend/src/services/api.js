@@ -22,9 +22,18 @@ export const fetchSessions = async (browserId) => {
   return data;
 };
 
-export const createSession = async (browserId, title) => {
-  const { data } = await api.post("/sessions/", { browser_id: browserId, title });
-  return data;
+export const createSession = async (sessionId, title = 'محادثة جديدة', browserId) => {
+  try {
+    const url = browserId ? `/sessions/?browser_id=${browserId}` : '/sessions/';
+    const response = await apiClient.post(url, {
+      session_id: sessionId,  // ✅ تأكدي من هذا السطر
+      title: title,
+    });
+    return response.data;
+  } catch (error) {
+    console.error('خطأ في إنشاء الجلسة:', error);
+    throw new Error('فشل في إنشاء محادثة جديدة.');
+  }
 };
 
 export const renameSession = async (sessionId, title) => {
