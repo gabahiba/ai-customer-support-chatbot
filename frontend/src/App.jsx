@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import Sidebar from "./components/Sidebar.jsx";
 import ChatWindow from "./components/ChatWindow.jsx";
+import { useState, useEffect, useRef } from 'react';
 import {
   getOrCreateBrowserId,
   clearBrowserId,
@@ -26,10 +27,17 @@ export default function App() {
     () => localStorage.getItem("chat-dark-mode") === "true"
   );
 
-  useEffect(() => {
-    document.documentElement.classList.toggle("dark", isDarkMode);
-    localStorage.setItem("chat-dark-mode", String(isDarkMode));
-  }, [isDarkMode]);
+  // ✅ نتتبع أول تحميل فقط لمنع مسح الرسائل عند إنشاء جلسة جديدة
+const isFirstLoad = useRef(true);
+
+useEffect(() => {
+  if (isFirstLoad.current) {
+    isFirstLoad.current = false;
+    if (activeSessionId) {
+      loadSessionMessages(activeSessionId);
+    }
+  }
+}, [activeSessionId]);
 
   const loadSessions = useCallback(async () => {
     try {
@@ -76,9 +84,12 @@ export default function App() {
     setMessages([]);
   };
 
-  const handleSelectSession = (sessionId) => {
-    setActiveSessionId(sessionId);
-  };
+ const handleSelectSession = async (sessionId) => {
+  if (sessionId === activeSessionId) return;
+  setActiveSessionId(sessionId);
+  await loadSessionMessages(sessionId);  // ✅ تحميل يدوي
+  setIsSidebarOpen(false);
+};
 
   const handleRenameSession = async (sessionId, title) => {
     const updated = await renameSession(sessionId, title);
