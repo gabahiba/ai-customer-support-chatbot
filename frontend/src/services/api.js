@@ -42,13 +42,18 @@ export const fetchMessages = async (sessionId) => {
   return data;
 };
 
-export const sendMessage = async (sessionId, browserId, message) => {
-  const { data } = await api.post("/chat/", {
-    session_id: sessionId,
-    browser_id: browserId,
-    message,
-  });
-  return data;
+export const sendMessage = async (sessionId, message, browserId) => {
+  try {
+    const response = await apiClient.post('/chat/', {
+      session_id: sessionId,
+      message: message,
+      browser_id: browserId,
+    });
+    return response.data;  // ✅ سيرجع { session_id, response }
+  } catch (error) {
+    console.error('خطأ في الاتصال بالخادم:', error);
+    throw new Error('عذراً، حدث خلل في الاتصال بالخادم.');
+  }
 };
 
 export const uploadPdf = async (file, onProgress) => {

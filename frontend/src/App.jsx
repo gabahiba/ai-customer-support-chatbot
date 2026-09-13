@@ -103,47 +103,64 @@ export default function App() {
   };
 
   const handleSendMessage = async (text) => {
-    const tempUserMsg = {
-      id: `temp-user-${Date.now()}`,
-      role: "user",
-      content: text,
+  // ✅ إذا لم توجد جلسة، أنشئ واحدة جديدة
+  let currentSessionId = activeSessionId;
+  if (!currentSessionId) {
+    currentSessionId = crypto.randomUUID();
+    try {
+      await createSession(currentSessionId, text.slice(0, 40), browserId);
+      setActiveSessionId(currentSessionId);
+      await loadSessions();
+    } catch (error) {
+      console.error('فشل في إنشاء محادثة:', error);
+      return;
+    }
+  }
+
+  const tempUserMsg = {
+    id: `temp-user-${Date.now()}`,
+    role: "user",
+    content: text,
+    created_at: new Date().toISOString(),
+  };
+  setMessages((prev) => [...prev, tempUserMsg]);
+  setIsSending(true);
+
+  try {
+    // ✅ الترتيب الصحيح: (sessionId, message, browserId)
+    const result = await sendMessage(currentSessionId, text, browserId);
+    
+    const assistantMsg = {
+      id: `assistant-${Date.now()}`,
+      role: "assistant",
+      content: result.response,  // ✅ response وليس reply
       created_at: new Date().toISOString(),
     };
-    setMessages((prev) => [...prev, tempUserMsg]);
-    setIsSending(true);
+    setMessages((prev) => [...prev, assistantMsg]);
 
-    try {
-      const result = await sendMessage(activeSessionId, browserId, text);
-      const assistantMsg = {
-        id: `assistant-${Date.now()}`,
-        role: "assistant",
-        content: result.reply,
-        created_at: new Date().toISOString(),
-      };
-      setMessages((prev) => [...prev, assistantMsg]);
-
-      const isFirstExchange = messages.length === 0;
-      if (isFirstExchange) {
-        const shortTitle = text.slice(0, 40);
-        await handleRenameSession(activeSessionId, shortTitle);
-      } else {
-        await loadSessions();
-      }
-    } catch (err) {
-      console.error("فشل إرسال الرسالة:", err);
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: `error-${Date.now()}`,
-          role: "assistant",
-          content: "عذراً، حدث خطأ أثناء الاتصال بالخادم. الرجاء المحاولة مرة أخرى.",
-          created_at: new Date().toISOString(),
-        },
-      ]);
-    } finally {
-      setIsSending(false);
+    // ✅ إذا كانت أول رسالة، حدّثي العنوان
+    const isFirstExchange = messages.length === 0;
+    if (isFirstExchange) {
+      const shortTitle = text.slice(0, 40);
+      await handleRenameSession(currentSessionId, shortTitle);
+    } else {
+      await loadSessions();
     }
-  };
+  } catch (err) {
+    console.error("فشل إرسال الرسالة:", err);
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: `error-${Date.now()}`,
+        role: "assistant",
+        content: "عذراً، حدث خطأ أثناء الاتصال بالخادم. الرجاء المحاولة مرة أخرى.",
+        created_at: new Date().toISOString(),
+      },
+    ]);
+  } finally {
+    setIsSending(false);
+  }
+};
 
   const handleUploadPdf = async (file) => {
     setIsUploading(true);
