@@ -1,32 +1,71 @@
-import axios from "axios";
+import axios from 'axios';
 
-const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || "http://localhost:8000",
+// ================================================
+// ✅ تعريف apiClient (مهم جداً)
+// ================================================
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+
+const apiClient = axios.create({
+  baseURL: API_BASE_URL,
+  headers: { 'Content-Type': 'application/json' },
 });
 
-export const getOrCreateBrowserId = () => {
-  let browserId = localStorage.getItem("chat-browser-id");
-  if (!browserId) {
-    browserId = crypto.randomUUID();
-    localStorage.setItem("chat-browser-id", browserId);
+// ================================================
+// دوال المصادقة (اختياري - إن كنت تستخدمينها)
+// ================================================
+// (احذفيها إن لم تكوني تستخدمين auth)
+
+// ================================================
+// دوال المحادثة
+// ================================================
+
+export const sendMessage = async (sessionId, message, browserId) => {
+  try {
+    const response = await apiClient.post('/chat/', {
+      session_id: sessionId,
+      message: message,
+      browser_id: browserId,
+    });
+    return response.data;
+  } catch (error) {
+    console.error('خطأ في الاتصال بالخادم:', error);
+    throw new Error('عذراً، حدث خلل في الاتصال بالخادم.');
   }
-  return browserId;
 };
 
-export const clearBrowserId = () => {
-  localStorage.removeItem("chat-browser-id");
+export const uploadPdf = async (file) => {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  try {
+    const response = await apiClient.post('/upload/pdf', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return response.data;
+  } catch (error) {
+    console.error('خطأ في رفع الملف:', error);
+    throw new Error('فشل رفع الملف. تأكد من أنه بصيغة PDF.');
+  }
 };
 
-export const fetchSessions = async (browserId) => {
-  const { data } = await api.get("/sessions/", { params: { browser_id: browserId } });
-  return data;
+export const getSessions = async (browserId) => {
+  try {
+    const url = browserId ? `/sessions/?browser_id=${browserId}` : '/sessions/';
+    const response = await apiClient.get(url);
+    return response.data;
+  } catch (error) {
+    console.error('خطأ في جلب الجلسات:', error);
+    throw new Error('فشل في تحميل قائمة المحادثات.');
+  }
 };
 
 export const createSession = async (sessionId, title = 'محادثة جديدة', browserId) => {
   try {
+    const finalSessionId = sessionId || 'session-' + Date.now() + '-' + Math.random().toString(36).substring(2, 11);
+    
     const url = browserId ? `/sessions/?browser_id=${browserId}` : '/sessions/';
     const response = await apiClient.post(url, {
-      session_id: sessionId,  // ✅ تأكدي من هذا السطر
+      session_id: finalSessionId,
       title: title,
     });
     return response.data;
@@ -36,47 +75,35 @@ export const createSession = async (sessionId, title = 'محادثة جديدة'
   }
 };
 
-export const renameSession = async (sessionId, title) => {
-  const { data } = await api.put(`/sessions/${sessionId}`, { title });
-  return data;
-};
-
-export const deleteSession = async (sessionId) => {
-  const { data } = await api.delete(`/sessions/${sessionId}`);
-  return data;
-};
-
-export const fetchMessages = async (sessionId) => {
-  const { data } = await api.get(`/sessions/${sessionId}/messages`);
-  return data;
-};
-
-export const sendMessage = async (sessionId, message, browserId) => {
+export const updateSessionTitle = async (sessionId, newTitle, browserId) => {
   try {
-    const response = await apiClient.post('/chat/', {
-      session_id: sessionId,
-      message: message,
-      browser_id: browserId,
-    });
-    return response.data;  // ✅ سيرجع { session_id, response }
+    const url = browserId ? `/sessions/${sessionId}?browser_id=${browserId}` : `/sessions/${sessionId}`;
+    const response = await apiClient.put(url, { title: newTitle });
+    return response.data;
   } catch (error) {
-    console.error('خطأ في الاتصال بالخادم:', error);
-    throw new Error('عذراً، حدث خلل في الاتصال بالخادم.');
+    console.error('خطأ في تحديث العنوان:', error);
+    throw new Error('فشل في تغيير اسم المحادثة.');
   }
 };
 
-export const uploadPdf = async (file, onProgress) => {
-  const formData = new FormData();
-  formData.append("file", file);
-  const { data } = await api.post("/upload/pdf", formData, {
-    headers: { "Content-Type": "multipart/form-data" },
-    onUploadProgress: (event) => {
-      if (onProgress && event.total) {
-        onProgress(Math.round((event.loaded / event.total) * 100));
-      }
-    },
-  });
-  return data;
+export const deleteSession = async (sessionId, browserId) => {
+  try {
+    const url = browserId ? `/sessions/${sessionId}?browser_id=${browserId}` : `/sessions/${sessionId}`;
+    const response = await apiClient.delete(url);
+    return response.data;
+  } catch (error) {
+    console.error('خطأ في حذف الجلسة:', error);
+    throw new Error('فشل في حذف المحادثة.');
+  }
 };
 
-export default api;
+export const getSessionMessages = async (sessionId, browserId) => {
+  try {
+    const url = browserId ? `/sessions/${sessionId}/messages?browser_id=${browserId}` : `/sessions/${sessionId}/messages`;
+    const response = await apiClient.get(url);
+    return response.data;
+  } catch (error) {
+    console.error('خطأ في جلب رسائل الجلسة:', error);
+    throw new Error('فشل في تحميل رسائل المحادثة.');
+  }
+};
