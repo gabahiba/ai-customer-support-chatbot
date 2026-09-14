@@ -1,7 +1,6 @@
-import { useEffect, useState, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import Sidebar from "./components/Sidebar.jsx";
 import ChatWindow from "./components/ChatWindow.jsx";
-import { useState, useEffect, useRef } from 'react';
 import {
   getOrCreateBrowserId,
   clearBrowserId,
@@ -27,17 +26,18 @@ export default function App() {
     () => localStorage.getItem("chat-dark-mode") === "true"
   );
 
-  // ✅ نتتبع أول تحميل فقط لمنع مسح الرسائل عند إنشاء جلسة جديدة
-const isFirstLoad = useRef(true);
+  const isFirstLoad = useRef(true);
 
-useEffect(() => {
-  if (isFirstLoad.current) {
-    isFirstLoad.current = false;
-    if (activeSessionId) {
-      loadSessionMessages(activeSessionId);
+  // ✅ تعريف loadSessionMessages أولاً
+  const loadSessionMessages = useCallback(async (sessionId) => {
+    try {
+      const data = await fetchMessages(sessionId);
+      setMessages(data);
+    } catch (err) {
+      console.error("تعذّر جلب الرسائل:", err);
+      setMessages([]);
     }
-  }
-}, [activeSessionId]);
+  }, []);
 
   const loadSessions = useCallback(async () => {
     try {
@@ -50,6 +50,7 @@ useEffect(() => {
     }
   }, [browserId]);
 
+  // ✅ تحميل أولي للجلسات
   useEffect(() => {
     (async () => {
       const data = await loadSessions();
@@ -64,6 +65,7 @@ useEffect(() => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ✅ تحميل الرسائل عند تغيير الجلسة
   useEffect(() => {
     if (!activeSessionId) return;
     (async () => {
@@ -84,12 +86,12 @@ useEffect(() => {
     setMessages([]);
   };
 
- const handleSelectSession = async (sessionId) => {
-  if (sessionId === activeSessionId) return;
-  setActiveSessionId(sessionId);
-  await loadSessionMessages(sessionId);  // ✅ تحميل يدوي
-  setIsSidebarOpen(false);
-};
+  const handleSelectSession = async (sessionId) => {
+    if (sessionId === activeSessionId) return;
+    setActiveSessionId(sessionId);
+    await loadSessionMessages(sessionId);
+    setIsSidebarOpen(false);
+  };
 
   const handleRenameSession = async (sessionId, title) => {
     const updated = await renameSession(sessionId, title);
@@ -114,70 +116,64 @@ useEffect(() => {
   };
 
   const handleSendMessage = async (text) => {
-  if (!text.trim() || isSending) return;
+    if (!text.trim() || isSending) return;
 
-  // ✅ 1. توليد session_id (بطريقة احتياطية تعمل على جميع المتصفحات)
-  let currentSessionId = activeSessionId;
-  if (!currentSessionId) {
-    currentSessionId = 'session-' + Date.now() + '-' + Math.random().toString(36).substring(2, 11);
-    
-    console.log('🆕 Generated session_id:', currentSessionId);
-    
-    try {
-      // ✅ 2. إنشاء الجلسة على الخادم مع تمرير session_id
-      await createSession(currentSessionId, text.slice(0, 40), browserId);
-      setActiveSessionId(currentSessionId);
-      await loadSessions();
-    } catch (error) {
-      console.error('فشل في إنشاء محادثة:', error);
-      return;
+    let currentSessionId = activeSessionId;
+    if (!currentSessionId) {
+      currentSessionId = 'session-' + Date.now() + '-' + Math.random().toString(36).substring(2, 11);
+      console.log('🆕 Generated session_id:', currentSessionId);
+
+      try {
+        await createSession(currentSessionId, text.slice(0, 40), browserId);
+        setActiveSessionId(currentSessionId);
+        await loadSessions();
+      } catch (error) {
+        console.error('فشل في إنشاء محادثة:', error);
+        return;
+      }
     }
-  }
 
-  // ✅ 3. إضافة رسالة المستخدم مؤقتاً
-  const tempUserMsg = {
-    id: `temp-user-${Date.now()}`,
-    role: "user",
-    content: text,
-    created_at: new Date().toISOString(),
-  };
-  setMessages((prev) => [...prev, tempUserMsg]);
-  setIsSending(true);
-
-  try {
-    // ✅ 4. إرسال الرسالة إلى /chat/
-    const result = await sendMessage(currentSessionId, text, browserId);
-    
-    const assistantMsg = {
-      id: `assistant-${Date.now()}`,
-      role: "assistant",
-      content: result.response,
+    const tempUserMsg = {
+      id: `temp-user-${Date.now()}`,
+      role: "user",
+      content: text,
       created_at: new Date().toISOString(),
     };
-    setMessages((prev) => [...prev, assistantMsg]);
+    setMessages((prev) => [...prev, tempUserMsg]);
+    setIsSending(true);
 
-    // ✅ 5. تحديث العنوان إذا كانت أول رسالة
-    const isFirstExchange = messages.length === 0;
-    if (isFirstExchange) {
-      await handleRenameSession(currentSessionId, text.slice(0, 40));
-    } else {
-      await loadSessions();
-    }
-  } catch (err) {
-    console.error("فشل إرسال الرسالة:", err);
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: `error-${Date.now()}`,
+    try {
+      const result = await sendMessage(currentSessionId, text, browserId);
+
+      const assistantMsg = {
+        id: `assistant-${Date.now()}`,
         role: "assistant",
-        content: "عذراً، حدث خطأ أثناء الاتصال بالخادم. الرجاء المحاولة مرة أخرى.",
+        content: result.response,
         created_at: new Date().toISOString(),
-      },
-    ]);
-  } finally {
-    setIsSending(false);
-  }
-};
+      };
+      setMessages((prev) => [...prev, assistantMsg]);
+
+      const isFirstExchange = messages.length === 0;
+      if (isFirstExchange) {
+        await handleRenameSession(currentSessionId, text.slice(0, 40));
+      } else {
+        await loadSessions();
+      }
+    } catch (err) {
+      console.error("فشل إرسال الرسالة:", err);
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `error-${Date.now()}`,
+          role: "assistant",
+          content: "عذراً، حدث خطأ أثناء الاتصال بالخادم. الرجاء المحاولة مرة أخرى.",
+          created_at: new Date().toISOString(),
+        },
+      ]);
+    } finally {
+      setIsSending(false);
+    }
+  };
 
   const handleUploadPdf = async (file) => {
     setIsUploading(true);
