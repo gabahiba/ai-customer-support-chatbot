@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 // ================================================
-// ✅ تعريف apiClient (مهم جداً)
+// إعداد apiClient
 // ================================================
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
@@ -11,14 +11,24 @@ const apiClient = axios.create({
 });
 
 // ================================================
-// دوال المصادقة (اختياري - إن كنت تستخدمينها)
+// إدارة browser_id
 // ================================================
-// (احذفيها إن لم تكوني تستخدمين auth)
+export const getOrCreateBrowserId = () => {
+  let storedId = localStorage.getItem('chat-browser-id');
+  if (!storedId) {
+    storedId = 'browser-' + Date.now() + '-' + Math.random().toString(36).substring(2, 11);
+    localStorage.setItem('chat-browser-id', storedId);
+  }
+  return storedId;
+};
+
+export const clearBrowserId = () => {
+  localStorage.removeItem('chat-browser-id');
+};
 
 // ================================================
 // دوال المحادثة
 // ================================================
-
 export const sendMessage = async (sessionId, message, browserId) => {
   try {
     const response = await apiClient.post('/chat/', {
@@ -28,18 +38,24 @@ export const sendMessage = async (sessionId, message, browserId) => {
     });
     return response.data;
   } catch (error) {
-    console.error('خطأ في الاتصال بالخادم:', error);
+    console.error('خطأ في إرسال الرسالة:', error);
     throw new Error('عذراً، حدث خلل في الاتصال بالخادم.');
   }
 };
 
-export const uploadPdf = async (file) => {
+export const uploadPdf = async (file, onProgress) => {
   const formData = new FormData();
   formData.append('file', file);
 
   try {
     const response = await apiClient.post('/upload/pdf', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
+      onUploadProgress: (progressEvent) => {
+        if (onProgress && progressEvent.total) {
+          const percent = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+          onProgress(percent);
+        }
+      },
     });
     return response.data;
   } catch (error) {
@@ -48,7 +64,10 @@ export const uploadPdf = async (file) => {
   }
 };
 
-export const getSessions = async (browserId) => {
+// ================================================
+// دوال الجلسات
+// ================================================
+export const fetchSessions = async (browserId) => {
   try {
     const url = browserId ? `/sessions/?browser_id=${browserId}` : '/sessions/';
     const response = await apiClient.get(url);
@@ -62,7 +81,6 @@ export const getSessions = async (browserId) => {
 export const createSession = async (sessionId, title = 'محادثة جديدة', browserId) => {
   try {
     const finalSessionId = sessionId || 'session-' + Date.now() + '-' + Math.random().toString(36).substring(2, 11);
-    
     const url = browserId ? `/sessions/?browser_id=${browserId}` : '/sessions/';
     const response = await apiClient.post(url, {
       session_id: finalSessionId,
@@ -75,13 +93,13 @@ export const createSession = async (sessionId, title = 'محادثة جديدة'
   }
 };
 
-export const updateSessionTitle = async (sessionId, newTitle, browserId) => {
+export const renameSession = async (sessionId, newTitle, browserId) => {
   try {
     const url = browserId ? `/sessions/${sessionId}?browser_id=${browserId}` : `/sessions/${sessionId}`;
     const response = await apiClient.put(url, { title: newTitle });
     return response.data;
   } catch (error) {
-    console.error('خطأ في تحديث العنوان:', error);
+    console.error('خطأ في تغيير الاسم:', error);
     throw new Error('فشل في تغيير اسم المحادثة.');
   }
 };
@@ -97,9 +115,11 @@ export const deleteSession = async (sessionId, browserId) => {
   }
 };
 
-export const getSessionMessages = async (sessionId, browserId) => {
+export const fetchMessages = async (sessionId, browserId) => {
   try {
-    const url = browserId ? `/sessions/${sessionId}/messages?browser_id=${browserId}` : `/sessions/${sessionId}/messages`;
+    const url = browserId
+      ? `/sessions/${sessionId}/messages?browser_id=${browserId}`
+      : `/sessions/${sessionId}/messages`;
     const response = await apiClient.get(url);
     return response.data;
   } catch (error) {
