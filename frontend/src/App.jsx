@@ -120,6 +120,7 @@ useEffect(() => {
   let currentSessionId = activeSessionId;
   if (!currentSessionId) {
     currentSessionId = 'session-' + Date.now() + '-' + Math.random().toString(36).substring(2, 11);
+    
     console.log('🆕 Generated session_id:', currentSessionId);
     
     try {
