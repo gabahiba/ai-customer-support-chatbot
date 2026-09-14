@@ -15,10 +15,13 @@ async def send_message(request: ChatRequest):
 
     browser_id = request.browser_id or "unknown-browser"
 
+    # ✅ فحص الجلسة بـ session_id فقط (بدون browser_id)
     check_session = Session.__table__.select().where(
-    Session.session_id == request.session_id
+        Session.session_id == request.session_id
     )
     existing_session = await database.fetch_one(check_session)
+    
+    # ✅ إذا لم توجد الجلسة، أنشئها
     if not existing_session:
         title = request.message[:30] + ("..." if len(request.message) > 30 else "")
         insert_session = Session.__table__.insert().values(
@@ -28,6 +31,7 @@ async def send_message(request: ChatRequest):
         )
         await database.execute(insert_session)
 
+    # تخزين رسالة المستخدم
     query = Conversation.__table__.insert().values(
         session_id=request.session_id,
         role="user",
@@ -35,6 +39,7 @@ async def send_message(request: ChatRequest):
     )
     await database.execute(query)
 
+    # جلب السياق
     select_query = Conversation.__table__.select() \
         .where(Conversation.session_id == request.session_id) \
         .order_by(desc(Conversation.created_at)) \

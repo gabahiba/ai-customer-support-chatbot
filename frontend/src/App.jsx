@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Sidebar from "./components/Sidebar.jsx";
 import ChatWindow from "./components/ChatWindow.jsx";
 import {
@@ -14,7 +14,7 @@ import {
 } from "./services/api.js";
 
 export default function App() {
-  const [browserId, setBrowserId] = useState(() => getOrCreateBrowserId());
+  const [browserId] = useState(() => getOrCreateBrowserId());
   const [sessions, setSessions] = useState([]);
   const [activeSessionId, setActiveSessionId] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -25,19 +25,6 @@ export default function App() {
   const [isDarkMode, setIsDarkMode] = useState(
     () => localStorage.getItem("chat-dark-mode") === "true"
   );
-
-  const isFirstLoad = useRef(true);
-
-  // ✅ تعريف loadSessionMessages أولاً
-  const loadSessionMessages = useCallback(async (sessionId) => {
-    try {
-      const data = await fetchMessages(sessionId);
-      setMessages(data);
-    } catch (err) {
-      console.error("تعذّر جلب الرسائل:", err);
-      setMessages([]);
-    }
-  }, []);
 
   const loadSessions = useCallback(async () => {
     try {
@@ -50,14 +37,16 @@ export default function App() {
     }
   }, [browserId]);
 
-  // ✅ تحميل أولي للجلسات
+  // تحميل أولي
   useEffect(() => {
     (async () => {
       const data = await loadSessions();
       if (data.length > 0) {
         setActiveSessionId(data[0].session_id);
       } else {
-        const created = await createSession(browserId, "محادثة جديدة");
+        // ✅ إنشاء جلسة جديدة بـ session_id فريد
+        const newSessionId = 'session-' + Date.now() + '-' + Math.random().toString(36).substring(2, 11);
+        const created = await createSession(newSessionId, "محادثة جديدة", browserId);
         setSessions([created]);
         setActiveSessionId(created.session_id);
       }
@@ -65,42 +54,42 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ✅ تحميل الرسائل عند تغيير الجلسة
+  // تحميل الرسائل عند تغيير الجلسة
   useEffect(() => {
     if (!activeSessionId) return;
     (async () => {
       try {
-        const data = await fetchMessages(activeSessionId);
+        const data = await fetchMessages(activeSessionId, browserId);
         setMessages(data);
       } catch (err) {
         console.error("تعذّر جلب الرسائل:", err);
         setMessages([]);
       }
     })();
-  }, [activeSessionId]);
+  }, [activeSessionId, browserId]);
 
   const handleNewSession = async () => {
+    // ✅ جلسة جديدة بـ session_id فريد
     const newSessionId = 'session-' + Date.now() + '-' + Math.random().toString(36).substring(2, 11);
-const created = await createSession(newSessionId, "محادثة جديدة", browserId);
+    const created = await createSession(newSessionId, "محادثة جديدة", browserId);
     setSessions((prev) => [created, ...prev]);
     setActiveSessionId(created.session_id);
     setMessages([]);
   };
 
-  const handleSelectSession = async (sessionId) => {
+  const handleSelectSession = (sessionId) => {
     if (sessionId === activeSessionId) return;
     setActiveSessionId(sessionId);
-    await loadSessionMessages(sessionId);
     setIsSidebarOpen(false);
   };
 
   const handleRenameSession = async (sessionId, title) => {
-    const updated = await renameSession(sessionId, title);
+    const updated = await renameSession(sessionId, title, browserId);
     setSessions((prev) => prev.map((s) => (s.session_id === sessionId ? updated : s)));
   };
 
   const handleDeleteSession = async (sessionId) => {
-    await deleteSession(sessionId);
+    await deleteSession(sessionId, browserId);
     const remaining = sessions.filter((s) => s.session_id !== sessionId);
     setSessions(remaining);
 
@@ -108,7 +97,8 @@ const created = await createSession(newSessionId, "محادثة جديدة", bro
       if (remaining.length > 0) {
         setActiveSessionId(remaining[0].session_id);
       } else {
-        const created = await createSession(browserId, "محادثة جديدة");
+        const newSessionId = 'session-' + Date.now() + '-' + Math.random().toString(36).substring(2, 11);
+        const created = await createSession(newSessionId, "محادثة جديدة", browserId);
         setSessions([created]);
         setActiveSessionId(created.session_id);
         setMessages([]);
@@ -121,9 +111,8 @@ const created = await createSession(newSessionId, "محادثة جديدة", bro
 
     let currentSessionId = activeSessionId;
     if (!currentSessionId) {
+      // ✅ إنشاء جلسة جديدة إذا لم توجد
       currentSessionId = 'session-' + Date.now() + '-' + Math.random().toString(36).substring(2, 11);
-      console.log('🆕 Generated session_id:', currentSessionId);
-
       try {
         await createSession(currentSessionId, text.slice(0, 40), browserId);
         setActiveSessionId(currentSessionId);
@@ -145,7 +134,6 @@ const created = await createSession(newSessionId, "محادثة جديدة", bro
 
     try {
       const result = await sendMessage(currentSessionId, text, browserId);
-
       const assistantMsg = {
         id: `assistant-${Date.now()}`,
         role: "assistant",
@@ -154,8 +142,7 @@ const created = await createSession(newSessionId, "محادثة جديدة", bro
       };
       setMessages((prev) => [...prev, assistantMsg]);
 
-      const isFirstExchange = messages.length === 0;
-      if (isFirstExchange) {
+      if (messages.length === 0) {
         await handleRenameSession(currentSessionId, text.slice(0, 40));
       } else {
         await loadSessions();
@@ -186,7 +173,7 @@ const created = await createSession(newSessionId, "محادثة جديدة", bro
         {
           id: `system-${Date.now()}`,
           role: "assistant",
-          content: `تم رفع الملف **${result.filename}** ومعالجته بنجاح (${result.chunks_indexed} جزءاً مفهرساً). يمكنك الآن طرح أسئلتك حوله.`,
+          content: `✅ ${result.message} (${result.chunks_stored} جزء مفهرس). يمكنك الآن طرح أسئلتك حوله.`,
           created_at: new Date().toISOString(),
         },
       ]);
@@ -197,7 +184,7 @@ const created = await createSession(newSessionId, "محادثة جديدة", bro
         {
           id: `upload-error-${Date.now()}`,
           role: "assistant",
-          content: "عذراً، تعذّر رفع الملف أو معالجته. تأكد أنه ملف PDF صالح وحاول مجدداً.",
+          content: "عذراً، تعذّر رفع الملف أو معالجته.",
           created_at: new Date().toISOString(),
         },
       ]);
