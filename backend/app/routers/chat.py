@@ -16,8 +16,7 @@ async def send_message(request: ChatRequest):
     browser_id = request.browser_id or "unknown-browser"
 
     check_session = Session.__table__.select().where(
-        Session.session_id == request.session_id,
-        Session.browser_id == browser_id
+    Session.session_id == request.session_id
     )
     existing_session = await database.fetch_one(check_session)
     if not existing_session:

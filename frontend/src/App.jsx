@@ -80,7 +80,8 @@ export default function App() {
   }, [activeSessionId]);
 
   const handleNewSession = async () => {
-    const created = await createSession(browserId, "محادثة جديدة");
+    const newSessionId = 'session-' + Date.now() + '-' + Math.random().toString(36).substring(2, 11);
+const created = await createSession(newSessionId, "محادثة جديدة", browserId);
     setSessions((prev) => [created, ...prev]);
     setActiveSessionId(created.session_id);
     setMessages([]);
